@@ -210,7 +210,7 @@ const PageButton = styled.button`
   }
 `;
 
-function Journal() {
+function Journal({ user }) {
   const [journals, setJournals] = useState([]);
   const [selectedJournal, setSelectedJournal] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -224,14 +224,26 @@ function Journal() {
     totalItems: 0
   });
   
-  // Fetch journals when component mounts or pagination changes
+  // For guest users, show a welcome message instead of fetching from backend
   useEffect(() => {
+    if (user?.id === 'guest') {
+      setError('');
+      setLoading(false);
+      return;
+    }
+    // For authenticated users, fetch journals
     fetchJournals(pagination.currentPage);
-  }, [pagination.currentPage]);
+  }, [pagination.currentPage, user]);
   
   const fetchJournals = async (page = 1) => {
     setLoading(true);
     setError('');
+    
+    // Skip fetching for guest users
+    if (user?.id === 'guest') {
+      setLoading(false);
+      return;
+    }
     
     try {
       const token = localStorage.getItem('token');
@@ -390,12 +402,20 @@ function Journal() {
       <Sidebar>
         <SidebarHeader>
           <Title>My Journals</Title>
-          <Button primary onClick={handleNewJournal}>New</Button>
+          {user?.id !== 'guest' && (
+            <Button primary onClick={handleNewJournal}>New</Button>
+          )}
         </SidebarHeader>
         
         <JournalList>
           {loading && journals.length === 0 ? (
             <LoadingIndicator>Loading journals...</LoadingIndicator>
+          ) : user?.id === 'guest' ? (
+            <EmptyState>
+              <p>Welcome, Guest User!</p>
+              <p>Journal functionality requires an account to save your entries.</p>
+              <p>The chat feature is fully available for you to use!</p>
+            </EmptyState>
           ) : journals.length === 0 ? (
             <EmptyState>
               <p>No journal entries yet.</p>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import styled from 'styled-components';
 
@@ -123,48 +123,59 @@ const ErrorMessage = styled.div`
   border-radius: 4px;
 `;
 
-function Chat() {
+function Chat({ user }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [genderPreference, setGenderPreference] = useState('neutral');
+  const [genderPreference, setGenderPreference] = useState(user?.preferred_friend_gender || 'neutral');
   const messagesEndRef = useRef(null);
   
-  // Fetch chat history and user preferences when component mounts
+  const fetchChatHistory = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token || user?.id === 'guest') return;
+      
+      const response = await axios.get('http://localhost:5000/api/chat/history', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Format messages for display
+      const formattedMessages = response.data.chats.map(chat => ({
+        id: chat.id,
+        text: chat.is_from_user ? chat.message : chat.response,
+        isUser: chat.is_from_user
+      }));
+      
+      setMessages(formattedMessages);
+      
+      // Fetch user preferences
+      const userResponse = await axios.get('http://localhost:5000/api/auth/profile', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setGenderPreference(userResponse.data.user.preferred_friend_gender);
+    } catch (err) {
+      console.error('Error fetching chat history:', err);
+      setError('Failed to load chat history. Please try again.');
+    }
+  }, [user?.id]);
+
+  // Initialize with welcome message for guest users
   useEffect(() => {
-    const fetchChatHistory = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-        
-        const response = await axios.get('http://localhost:5000/api/chat/history', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        
-        // Format messages for display
-        const formattedMessages = response.data.chats.map(chat => ({
-          id: chat.id,
-          text: chat.is_from_user ? chat.message : chat.response,
-          isUser: chat.is_from_user
-        }));
-        
-        setMessages(formattedMessages);
-        
-        // Fetch user preferences
-        const userResponse = await axios.get('http://localhost:5000/api/auth/profile', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        
-        setGenderPreference(userResponse.data.user.preferred_friend_gender);
-      } catch (err) {
-        console.error('Error fetching chat history:', err);
-        setError('Failed to load chat history. Please try again.');
-      }
-    };
-    
-    fetchChatHistory();
-  }, []);
+    if (user?.id === 'guest') {
+      // For guest users, start with a welcome message and don't fetch from backend
+      setMessages([{
+        id: 'welcome',
+        text: "Hello! I'm your AI friend. How are you feeling today? Feel free to chat with me about anything!",
+        isUser: false
+      }]);
+      setGenderPreference(user.preferred_friend_gender || 'neutral');
+    } else {
+      // For authenticated users, fetch chat history
+      fetchChatHistory();
+    }
+  }, [user, fetchChatHistory]);
   
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -175,6 +186,40 @@ function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
   
+  const generateSimulatedResponse = (userMessage) => {
+    // Simple response generator for guest users
+    const responses = [
+      "That's really interesting! Tell me more about how that makes you feel.",
+      "I can understand why you might feel that way. What do you think would help?",
+      "Thank you for sharing that with me. How has your day been overall?",
+      "It sounds like you're going through a lot. Remember that it's okay to take things one step at a time.",
+      "I'm here to listen. What's been on your mind lately?",
+      "That's a lot to process. How are you taking care of yourself today?",
+      "I appreciate you opening up to me. What would make you feel better right now?",
+      "It's great that you're sharing your thoughts. What positive things happened today?",
+      "I hear you. Sometimes it helps to talk about what's bothering us. How can I support you?",
+      "Thank you for trusting me with your feelings. What brings you joy?"
+    ];
+    
+    // Add some simple context-aware responses
+    const lowerMessage = userMessage.toLowerCase();
+    if (lowerMessage.includes('sad') || lowerMessage.includes('down') || lowerMessage.includes('depressed')) {
+      return "I'm sorry you're feeling sad. Remember that these feelings are temporary, and it's okay to feel this way. What usually helps you when you're feeling down?";
+    }
+    if (lowerMessage.includes('happy') || lowerMessage.includes('good') || lowerMessage.includes('great')) {
+      return "I'm so glad to hear you're feeling good! That's wonderful. What's been making you happy today?";
+    }
+    if (lowerMessage.includes('anxious') || lowerMessage.includes('worried') || lowerMessage.includes('nervous')) {
+      return "It sounds like you're feeling anxious. That can be really tough. Have you tried any breathing exercises or grounding techniques?";
+    }
+    if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
+      return "Hello! It's great to meet you. How are you doing today? I'm here to listen and chat about whatever is on your mind.";
+    }
+    
+    // Return a random response for general messages
+    return responses[Math.floor(Math.random() * responses.length)];
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
@@ -188,25 +233,39 @@ function Chat() {
     setLoading(true);
     setError('');
     
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.post('http://localhost:5000/api/chat/send', 
-        { message: userMessage },
-        { headers: { Authorization: `Bearer ${token}` }}
-      );
-      
-      // Add AI response to chat
-      setMessages(prev => [...prev, { 
-        id: response.data.chat_id, 
-        text: response.data.response, 
-        isUser: false 
-      }]);
-      
-    } catch (err) {
-      console.error('Error sending message:', err);
-      setError('Failed to send message. Please try again.');
-    } finally {
-      setLoading(false);
+    if (user?.id === 'guest') {
+      // For guest users, simulate AI response
+      setTimeout(() => {
+        const aiResponse = generateSimulatedResponse(userMessage);
+        setMessages(prev => [...prev, { 
+          id: Date.now() + 1, 
+          text: aiResponse, 
+          isUser: false 
+        }]);
+        setLoading(false);
+      }, 1000); // Simulate API delay
+    } else {
+      // For authenticated users, call backend API
+      try {
+        const token = localStorage.getItem('token');
+        const response = await axios.post('http://localhost:5000/api/chat/send', 
+          { message: userMessage },
+          { headers: { Authorization: `Bearer ${token}` }}
+        );
+        
+        // Add AI response to chat
+        setMessages(prev => [...prev, { 
+          id: response.data.chat_id, 
+          text: response.data.response, 
+          isUser: false 
+        }]);
+        
+      } catch (err) {
+        console.error('Error sending message:', err);
+        setError('Failed to send message. Please try again.');
+      } finally {
+        setLoading(false);
+      }
     }
   };
   
@@ -214,6 +273,13 @@ function Chat() {
     const newGender = e.target.value;
     setGenderPreference(newGender);
     
+    if (user?.id === 'guest') {
+      // For guest users, just update local state
+      // Could also update the user object in App.jsx if needed
+      return;
+    }
+    
+    // For authenticated users, update backend
     try {
       const token = localStorage.getItem('token');
       await axios.put('http://localhost:5000/api/chat/preferences', 

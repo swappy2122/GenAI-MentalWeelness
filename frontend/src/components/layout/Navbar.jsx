@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 
@@ -82,27 +81,13 @@ const Username = styled.span`
   color: #333;
 `;
 
-function Navbar() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState(null);
+function Navbar({ user = { username: 'Guest User' }, onLogout }) {
   const navigate = useNavigate();
   
-  useEffect(() => {
-    // Check if user is logged in
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
-    
-    if (token && userData) {
-      setIsAuthenticated(true);
-      setUser(JSON.parse(userData));
-    }
-  }, []);
-  
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setIsAuthenticated(false);
-    setUser(null);
+    if (onLogout) {
+      onLogout();
+    }
     navigate('/');
   };
   
@@ -111,23 +96,15 @@ function Navbar() {
       <Logo to="/">FriendBot</Logo>
       
       <NavLinks>
-        {isAuthenticated ? (
-          // Links for authenticated users
-          <>
-            <NavLink to="/chat">Chat</NavLink>
-            <NavLink to="/journal">Journal</NavLink>
-            <UserInfo>
-              <Username>{user?.username}</Username>
-              <Button onClick={handleLogout}>Logout</Button>
-            </UserInfo>
-          </>
-        ) : (
-          // Links for non-authenticated users
-          <>
-            <NavLink to="/login">Login</NavLink>
-            <NavLink to="/register">Register</NavLink>
-          </>
-        )}
+        <NavLink to="/chat">Chat</NavLink>
+        <NavLink to="/journal">Journal</NavLink>
+        <UserInfo>
+          <Username>{user?.username}</Username>
+          {/* Hide logout button for guest user or make it optional */}
+          {onLogout && (
+            <Button onClick={handleLogout}>Logout</Button>
+          )}
+        </UserInfo>
       </NavLinks>
     </NavbarContainer>
   );
